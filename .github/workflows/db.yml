@@ -1,0 +1,48 @@
+name: MySQL CI/CD
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+   
+  build-docker-image:
+    name: Publish to Docker Hub
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Get current time
+        uses: 1466587594/get-current-time@v2
+        id: current-time
+        with: 
+          format: YYYYMMDD-HHmm
+          utcOffset: "+09:00"
+
+      - name: Login to Docker Hub
+        run: docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build Container image with current time
+        run: docker build -t ${{ secrets.DOCKER_REPO }}:${{ steps.current-time.outputs.formattedTime }} . --no-cache
+
+      - name: Publish Docker image
+        run: docker push ${{ secrets.DOCKER_REPO }}:${{ steps.current-time.outputs.formattedTime }}
+
+      - name: re-tag Docker image
+        run: docker tag ${{ secrets.DOCKER_REPO }}:${{ steps.current-time.outputs.formattedTime }} ${{ secrets.DOCKER_REPO }}:latest
+
+      - name: Push Docker image
+        run: docker push ${{ secrets.DOCKER_REPO }}:latest
+     
+      - name: get gke credentials
+        id: get-credentials
+        uses: google-github-actions/get-gke-credentials@main
+        with:
+          cluster_name: my-kubernetes-test-20200822-gke
+          location: us-central1
+          credentials: ${{ secrets.gcp_credentials }}
+
+# The KUBECONFIG env var is automatically exported and picked up by kubectl.
+      - name: update mystok-db image
+        run: kubectl rollout restart deploy mystok-db
